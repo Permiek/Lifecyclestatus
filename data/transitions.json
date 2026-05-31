@@ -1,0 +1,148 @@
+{
+  "_comment": "Machine-readable lifecycle transition registry. Mirrors the markdown specs (order.md, user-account.md, support-ticket.md, document.md). Source of truth for the interactive explorer in /explorer. classification is derived from canonical ordinal positions for canonical statuses; branch statuses have a null ordinal and are classified as 'lateral'.",
+  "entities": {
+    "order": {
+      "label": "Order",
+      "description": "Fulfillment pipeline from cart to delivery.",
+      "canonical": ["Draft", "Submitted", "Confirmed", "Processing", "Shipped", "Delivered", "Completed"],
+      "branch": ["Cancelled", "Return Requested", "Returned"],
+      "terminal": ["Completed", "Cancelled", "Returned"],
+      "descriptions": {
+        "Draft": "Order being assembled; not yet submitted.",
+        "Submitted": "Customer has confirmed intent; awaiting merchant acknowledgement.",
+        "Confirmed": "Merchant has accepted the order; payment authorized.",
+        "Processing": "Items are being picked, packed, or prepared.",
+        "Shipped": "Order dispatched; in transit with a carrier.",
+        "Delivered": "Carrier confirms delivery to the recipient.",
+        "Completed": "Post-delivery window closed; order fully settled.",
+        "Cancelled": "Order voided. Reachable from most pre-shipment states.",
+        "Return Requested": "Customer has initiated a return after delivery.",
+        "Returned": "Goods received back; refund or credit issued."
+      },
+      "transitions": [
+        { "from": "Draft", "to": "Submitted", "classification": "progression", "cause": "Customer places order" },
+        { "from": "Submitted", "to": "Confirmed", "classification": "progression", "cause": "Merchant accepts; payment authorized" },
+        { "from": "Confirmed", "to": "Processing", "classification": "progression", "cause": "Fulfillment system picks up order" },
+        { "from": "Processing", "to": "Shipped", "classification": "progression", "cause": "Dispatch with tracking number" },
+        { "from": "Shipped", "to": "Delivered", "classification": "progression", "cause": "Carrier confirms delivery" },
+        { "from": "Delivered", "to": "Completed", "classification": "progression", "cause": "Post-delivery window closes" },
+        { "from": "Submitted", "to": "Cancelled", "classification": "lateral", "cause": "Payment fails or merchant rejects" },
+        { "from": "Confirmed", "to": "Cancelled", "classification": "lateral", "cause": "Customer or merchant cancels before fulfillment" },
+        { "from": "Processing", "to": "Cancelled", "classification": "lateral", "cause": "Fulfillment failure (e.g. out of stock)" },
+        { "from": "Shipped", "to": "Cancelled", "classification": "lateral", "cause": "Carrier returns undeliverable package" },
+        { "from": "Delivered", "to": "Return Requested", "classification": "lateral", "cause": "Customer initiates return" },
+        { "from": "Return Requested", "to": "Returned", "classification": "lateral", "cause": "Merchant approves; goods received back" },
+        { "from": "Return Requested", "to": "Completed", "classification": "lateral", "cause": "Return claim rejected" },
+        { "from": "Processing", "to": "Confirmed", "classification": "regression", "cause": "Fulfillment started in error; order pulled back for re-confirmation (e.g., payment issue discovered post-processing)", "handling": "Any inventory reservation or payment capture triggered at Confirmed -> Processing may need to be reversed or re-evaluated." },
+        { "from": "Confirmed", "to": "Submitted", "classification": "regression", "cause": "Payment authorization expired; order needs re-authorization", "handling": "Payment authorization state is now uncertain; downstream invoice or billing records should not be finalized until Confirmed is re-observed." },
+        { "from": "Shipped", "to": "Processing", "classification": "regression", "cause": "Carrier returned package before delivery; order re-enters fulfillment", "handling": "A shipping label or dispatch notification may have already been sent to the customer. The regression indicates the upstream system has invalidated that dispatch." },
+        { "from": "Delivered", "to": "Shipped", "classification": "regression", "cause": "Delivery scan was erroneous; carrier corrects status", "handling": "A delivery confirmation sent to the customer may be premature. This is rare and usually a data correction in the carrier integration." }
+      ]
+    },
+    "user-account": {
+      "label": "User Account",
+      "description": "Identity and access from registration to deactivation.",
+      "canonical": ["Pending Verification", "Active", "Suspended", "Deactivated"],
+      "branch": ["Locked", "Pending Deletion"],
+      "terminal": ["Deactivated"],
+      "descriptions": {
+        "Pending Verification": "Account created; email/identity not yet confirmed.",
+        "Active": "Verified and in normal use.",
+        "Locked": "Temporarily inaccessible due to security policy (e.g., too many failed logins).",
+        "Suspended": "Administratively restricted; the user cannot log in.",
+        "Pending Deletion": "User requested account deletion; grace period is running.",
+        "Deactivated": "Permanently closed."
+      },
+      "transitions": [
+        { "from": "Pending Verification", "to": "Active", "classification": "progression", "cause": "User completes email/identity verification" },
+        { "from": "Active", "to": "Suspended", "classification": "progression", "cause": "Admin applies restriction" },
+        { "from": "Suspended", "to": "Deactivated", "classification": "progression", "cause": "Admin permanently closes account" },
+        { "from": "Pending Verification", "to": "Deactivated", "classification": "lateral", "cause": "Verification TTL expired with no action" },
+        { "from": "Active", "to": "Locked", "classification": "lateral", "cause": "Failed login threshold exceeded" },
+        { "from": "Active", "to": "Pending Deletion", "classification": "lateral", "cause": "User initiates deletion request" },
+        { "from": "Locked", "to": "Active", "classification": "lateral", "cause": "User completes unlock flow or admin resets" },
+        { "from": "Locked", "to": "Suspended", "classification": "lateral", "cause": "Admin escalates during lockout" },
+        { "from": "Pending Deletion", "to": "Active", "classification": "lateral", "cause": "User cancels within grace period" },
+        { "from": "Pending Deletion", "to": "Deactivated", "classification": "lateral", "cause": "Grace period elapses" },
+        { "from": "Suspended", "to": "Active", "classification": "regression", "cause": "Admin lifts suspension; account restored to normal use", "handling": "The most common regression. Access controls, tokens, and session state need to be re-evaluated as if the account is healthy again." },
+        { "from": "Deactivated", "to": "Suspended", "classification": "regression", "cause": "Upstream system reverses a permanent close (exceptional; usually a data correction)", "handling": "Rare and significant. If any data anonymisation or deletion was triggered upon Deactivated, this regression signals a serious upstream correction. Flag immediately." },
+        { "from": "Active", "to": "Pending Verification", "classification": "regression", "cause": "Re-verification required (e.g., security policy change, email address changed)", "handling": "The account is functionally restricted until reverified. Any sessions or tokens issued during Active should be treated as potentially stale." }
+      ]
+    },
+    "support-ticket": {
+      "label": "Support Ticket",
+      "description": "Issue resolution from open to closed.",
+      "canonical": ["Open", "In Progress", "Resolved", "Closed"],
+      "branch": ["Pending Customer", "Pending Third Party", "Escalated", "Reopened"],
+      "terminal": ["Closed"],
+      "descriptions": {
+        "Open": "Ticket received; not yet assigned or worked.",
+        "In Progress": "An agent is actively investigating or working the issue.",
+        "Pending Customer": "Waiting on information or confirmation from the customer.",
+        "Pending Third Party": "Blocked on an external party (vendor, partner, internal team).",
+        "Escalated": "Transferred to a higher-tier team.",
+        "Resolved": "Agent has marked the issue as fixed.",
+        "Closed": "Confirmed resolved or auto-closed after inactivity.",
+        "Reopened": "Customer reports the issue persists after resolution or close."
+      },
+      "transitions": [
+        { "from": "Open", "to": "In Progress", "classification": "progression", "cause": "Agent assigns ticket" },
+        { "from": "In Progress", "to": "Resolved", "classification": "progression", "cause": "Agent marks issue fixed" },
+        { "from": "Resolved", "to": "Closed", "classification": "progression", "cause": "Customer confirms or auto-close TTL elapses" },
+        { "from": "Open", "to": "Closed", "classification": "lateral", "cause": "System detects spam or duplicate" },
+        { "from": "In Progress", "to": "Pending Customer", "classification": "lateral", "cause": "Agent requests more information" },
+        { "from": "In Progress", "to": "Pending Third Party", "classification": "lateral", "cause": "Blocked on external dependency" },
+        { "from": "In Progress", "to": "Escalated", "classification": "lateral", "cause": "Agent escalates or SLA timer triggers" },
+        { "from": "Pending Customer", "to": "In Progress", "classification": "lateral", "cause": "Customer replies" },
+        { "from": "Pending Customer", "to": "Closed", "classification": "lateral", "cause": "No customer response within TTL" },
+        { "from": "Pending Third Party", "to": "In Progress", "classification": "lateral", "cause": "External blocker resolved" },
+        { "from": "Escalated", "to": "In Progress", "classification": "lateral", "cause": "Escalation team accepts ticket" },
+        { "from": "Escalated", "to": "Resolved", "classification": "lateral", "cause": "Escalation team resolves directly" },
+        { "from": "Resolved", "to": "Reopened", "classification": "lateral", "cause": "Customer disputes resolution" },
+        { "from": "Closed", "to": "Reopened", "classification": "lateral", "cause": "Customer re-opens within allowed window" },
+        { "from": "Reopened", "to": "In Progress", "classification": "lateral", "cause": "Agent re-engages" },
+        { "from": "Reopened", "to": "Escalated", "classification": "lateral", "cause": "Second reopen triggers policy rule" },
+        { "from": "In Progress", "to": "Open", "classification": "regression", "cause": "Agent unassigns ticket; returns to unworked queue", "handling": "The ticket effectively re-queues. Any SLA clock adjustments made when the ticket was assigned may need recalculating." },
+        { "from": "Resolved", "to": "In Progress", "classification": "regression", "cause": "Resolution found to be incomplete or incorrect", "handling": "The most operationally significant regression. Any customer-facing 'your issue is resolved' communication triggered at Resolved is now incorrect. Flag for potential follow-up messaging." },
+        { "from": "Closed", "to": "Resolved", "classification": "regression", "cause": "Auto-close was premature; ticket re-opened for review", "handling": "If Closed triggered satisfaction survey dispatch or case archival, note those as premature. Do not re-trigger them when Closed is re-observed." },
+        { "from": "Escalated", "to": "Open", "classification": "regression", "cause": "Escalation reversed; ticket returned to general queue (regresses past In Progress)", "handling": "The ticket has skipped backward past In Progress. Treat as a gap of two ordinal positions and consider whether any intermediate handlers for In Progress need to run." }
+      ]
+    },
+    "document": {
+      "label": "Document / Content",
+      "description": "Editorial workflow from draft to archive.",
+      "canonical": ["Draft", "In Review", "Approved", "Published", "Archived"],
+      "branch": ["Changes Requested", "Scheduled", "Unpublished"],
+      "terminal": ["Archived"],
+      "descriptions": {
+        "Draft": "Being written; only visible to the author and collaborators.",
+        "In Review": "Submitted for editorial or peer review.",
+        "Changes Requested": "Reviewer has returned the document for revisions.",
+        "Approved": "Cleared by reviewer(s); ready for publishing.",
+        "Scheduled": "Approved and queued for automatic publication at a future datetime.",
+        "Published": "Publicly visible or accessible to the target audience.",
+        "Unpublished": "Temporarily pulled from public view; not yet archived.",
+        "Archived": "Retired; no longer actively maintained or publicly visible."
+      },
+      "transitions": [
+        { "from": "Draft", "to": "In Review", "classification": "progression", "cause": "Author submits for review" },
+        { "from": "In Review", "to": "Approved", "classification": "progression", "cause": "Reviewer approves" },
+        { "from": "Approved", "to": "Published", "classification": "progression", "cause": "Author or system publishes immediately" },
+        { "from": "Published", "to": "Archived", "classification": "progression", "cause": "Admin retires content" },
+        { "from": "Draft", "to": "Archived", "classification": "lateral", "cause": "Author discards document" },
+        { "from": "In Review", "to": "Changes Requested", "classification": "lateral", "cause": "Reviewer requests revisions" },
+        { "from": "Changes Requested", "to": "In Review", "classification": "lateral", "cause": "Author resubmits after addressing feedback" },
+        { "from": "Approved", "to": "Scheduled", "classification": "lateral", "cause": "Author sets a future publish date" },
+        { "from": "Scheduled", "to": "Published", "classification": "lateral", "cause": "Scheduler fires at publish datetime" },
+        { "from": "Published", "to": "Unpublished", "classification": "lateral", "cause": "Author or admin pulls content from public view" },
+        { "from": "Unpublished", "to": "Published", "classification": "lateral", "cause": "Author or admin re-publishes" },
+        { "from": "Unpublished", "to": "Archived", "classification": "lateral", "cause": "Admin permanently retires content" },
+        { "from": "In Review", "to": "Draft", "classification": "regression", "cause": "Reviewer withdraws from review; document returned to author for rework", "handling": "Common in editorial workflows. The review cycle resets. Any notifications sent to reviewers about the submission should be noted as superseded." },
+        { "from": "Approved", "to": "In Review", "classification": "regression", "cause": "Approval revoked (e.g., new stakeholder objects, policy changed)", "handling": "Approval was granted but then revoked. Any scheduled publication or 'approved' indicators surfaced to downstream systems should be retracted." },
+        { "from": "Published", "to": "Approved", "classification": "regression", "cause": "Document pulled back to approved state, bypassing explicit Unpublished step", "handling": "An unusual path - public to pre-publication without passing through Unpublished. May indicate a data correction in the upstream CMS. The practical effect is the same as Published -> Unpublished: the document is no longer public." },
+        { "from": "Scheduled", "to": "Approved", "classification": "regression", "cause": "Scheduling cancelled; document remains approved and ready to reschedule or publish immediately", "handling": "The publish date was cancelled. No publication action has occurred. The document is still cleared for publishing and is waiting for a new publish action." },
+        { "from": "Unpublished", "to": "Draft", "classification": "regression", "cause": "Author decides to revise content rather than simply re-publish", "handling": "The author wants to make substantive changes, not just re-publish. This is a regression of two ordinal positions (skipping In Review). The document is now back in the edit-submit-review cycle." }
+      ]
+    }
+  }
+}

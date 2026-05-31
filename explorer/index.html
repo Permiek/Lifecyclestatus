@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lifecycle Status Explorer</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --ink: #1c2430;
+    --muted: #5c6776;
+    --line: #e2e6ec;
+    --accent: #2f6fed;
+    --prog: #1f9d57;
+    --prog-bg: #e6f6ec;
+    --regr: #c77700;
+    --regr-bg: #fcf1de;
+    --lat: #2f6fed;
+    --lat-bg: #e8f0fe;
+    --danger: #d23b3b;
+    --danger-bg: #fdeaea;
+    --term: #6b4fbb;
+    --term-bg: #efeafb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  header.top {
+    background: var(--ink);
+    color: #fff;
+    padding: 18px 24px;
+  }
+  header.top h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  header.top p { margin: 4px 0 0; font-size: 13px; color: #b7c0cd; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 64px; }
+
+  .tabs { display: flex; gap: 6px; margin: 20px 0 0; flex-wrap: wrap; }
+  .tab {
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+    padding: 9px 16px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px;
+    font-weight: 550; border-bottom: none;
+  }
+  .tab.active { color: var(--ink); background: var(--panel); box-shadow: 0 -2px 0 var(--accent) inset; }
+  .tab:hover:not(.active) { color: var(--ink); }
+
+  .entity-meta {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 0 8px 8px 8px;
+    padding: 16px 20px; margin-bottom: 22px;
+  }
+  .entity-meta .canon { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .entity-meta .canon b { color: var(--ink); }
+  .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 12px;
+    background: #eef1f5; color: var(--muted); margin: 0 2px;
+  }
+  .arrow { color: var(--muted); margin: 0 2px; }
+
+  h2.section { font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 30px 0 12px; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    cursor: pointer; transition: border-color .12s, box-shadow .12s; position: relative;
+  }
+  .card:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(47,111,237,.08); }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .card .name { font-weight: 650; font-size: 14px; }
+  .card .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .card .ord {
+    position: absolute; top: 10px; right: 10px; font-size: 11px; font-weight: 700;
+    width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; background: #eef1f5; color: var(--muted);
+  }
+  .card .ord.branch { background: var(--lat-bg); color: var(--lat); width: auto; padding: 0 8px; border-radius: 10px; }
+  .card .ord.term { background: var(--term-bg); color: var(--term); width: auto; padding: 0 8px; border-radius: 10px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-top: 14px; }
+  .panel h3 { margin: 0 0 4px; font-size: 16px; }
+  .panel .sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+
+  .trans-row {
+    display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line);
+  }
+  .trans-row:first-of-type { border-top: none; }
+  .badge {
+    flex: none; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 6px; min-width: 96px; text-align: center;
+  }
+  .badge.progression { background: var(--prog-bg); color: var(--prog); }
+  .badge.regression  { background: var(--regr-bg); color: var(--regr); }
+  .badge.lateral     { background: var(--lat-bg);  color: var(--lat); }
+  .badge.none        { background: var(--danger-bg); color: var(--danger); }
+  .trans-body .to { font-weight: 600; }
+  .trans-body .cause { font-size: 13px; color: var(--muted); }
+  .trans-body .handling { font-size: 12.5px; color: var(--regr); background: var(--regr-bg); padding: 6px 9px; border-radius: 6px; margin-top: 5px; }
+  .term-flag { font-size: 12px; color: var(--term); background: var(--term-bg); padding: 4px 9px; border-radius: 6px; display: inline-block; margin-top: 8px; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+
+  label.fld { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; letter-spacing: .03em; }
+  select, button, input[type=text] {
+    font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  select { width: 100%; }
+  button {
+    cursor: pointer; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600;
+  }
+  button:hover { filter: brightness(1.05); }
+  button.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+  button.ghost:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+  button.small { padding: 5px 10px; font-size: 13px; }
+  .row-inline { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .row-inline > div { flex: 1; min-width: 160px; }
+
+  .result-box { margin-top: 14px; padding: 14px; border-radius: 8px; border: 1px solid var(--line); background: #fbfcfe; display: none; }
+  .result-box.show { display: block; }
+
+  table.journey { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  table.journey th, table.journey td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.journey th { font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: .03em; }
+  table.journey .mini-badge { font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+  .empty-hint { font-size: 13px; color: var(--muted); font-style: italic; }
+
+  .tracer-current { font-size: 14px; margin: 10px 0; }
+  .tracer-current b { color: var(--accent); }
+
+  .req-item { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: #fbfcfe; }
+  .req-item .req-head { font-weight: 600; font-size: 14px; }
+  .req-item .req-note { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .req-item .x { float: right; cursor: pointer; color: var(--muted); font-weight: 700; }
+  .req-item .x:hover { color: var(--danger); }
+
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50;
+  }
+  .toast.show { opacity: 1; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend span b { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Lifecycle Status Explorer</h1>
+  <p>Explore statuses, transitions, and scenarios for each entity &mdash; and flag the transitions <em>your</em> process needs before development begins.</p>
+</header>
+
+<div class="wrap">
+  <div class="tabs" id="tabs"></div>
+  <div class="entity-meta" id="entityMeta"></div>
+
+  <h2 class="section">1 &middot; Pick a status to see what can happen next</h2>
+  <p class="empty-hint" id="gridHint">Click any status card below.</p>
+  <div class="grid" id="grid"></div>
+
+  <div class="panel" id="transPanel" style="display:none;"></div>
+
+  <h2 class="section">2 &middot; Journey Tracer &mdash; walk a path step by step</h2>
+  <div class="panel">
+    <p class="sub">Trace how an entity might move through its lifecycle. Each hop is classified automatically. Hops that aren't in the spec are flagged so you can discuss them.</p>
+    <div class="tracer-current" id="tracerCurrent">Choose a starting status from the dropdown.</div>
+    <div class="row-inline">
+      <div>
+        <label class="fld" for="tracerNext">Move to</label>
+        <select id="tracerNext"></select>
+      </div>
+      <button class="small" id="tracerGo">Add step</button>
+      <button class="small ghost" id="tracerReset">Reset</button>
+      <button class="small ghost" id="tracerExport">Copy journey</button>
+    </div>
+    <table class="journey" id="journeyTable" style="display:none;">
+      <thead><tr><th>#</th><th>From</th><th>To</th><th>Direction</th><th>Cause / note</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h2 class="section">3 &middot; Instant Classifier &amp; Requirement Flagging</h2>
+  <div class="panel">
+    <p class="sub">Pick any From / To pair to see how the system would classify it. If the pair isn't documented, flag it as a transition your business needs &mdash; build up a list to export and confirm with the team.</p>
+    <div class="row-inline">
+      <div>
+        <label class="fld" for="clsFrom">From</label>
+        <select id="clsFrom"></select>
+      </div>
+      <div>
+        <label class="fld" for="clsTo">To</label>
+        <select id="clsTo"></select>
+      </div>
+      <button id="clsGo">Classify</button>
+    </div>
+    <div class="result-box" id="clsResult"></div>
+  </div>
+
+  <h2 class="section">4 &middot; Proposed / Needed Transitions</h2>
+  <div class="panel">
+    <p class="sub">Transitions you've flagged as needed but not yet in the spec. Export this list to attach to a ticket or review before committing to the design.</p>
+    <div id="reqList"><p class="empty-hint">Nothing flagged yet. Use the classifier above to flag a transition your process needs.</p></div>
+    <div class="row-inline" style="margin-top:10px;">
+      <button class="small ghost" id="reqExport">Copy as JSON</button>
+      <button class="small ghost" id="reqClear">Clear all</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ----- Embedded data (mirrors /data/transitions.json so this file works by double-clicking) ----- */
+const DATA = {
+  "order": {
+    label: "Order",
+    description: "Fulfillment pipeline from cart to delivery.",
+    canonical: ["Draft","Submitted","Confirmed","Processing","Shipped","Delivered","Completed"],
+    branch: ["Cancelled","Return Requested","Returned"],
+    terminal: ["Completed","Cancelled","Returned"],
+    descriptions: {
+      "Draft":"Order being assembled; not yet submitted.",
+      "Submitted":"Customer has confirmed intent; awaiting merchant acknowledgement.",
+      "Confirmed":"Merchant has accepted the order; payment authorized.",
+      "Processing":"Items are being picked, packed, or prepared.",
+      "Shipped":"Order dispatched; in transit with a carrier.",
+      "Delivered":"Carrier confirms delivery to the recipient.",
+      "Completed":"Post-delivery window closed; order fully settled.",
+      "Cancelled":"Order voided. Reachable from most pre-shipment states.",
+      "Return Requested":"Customer has initiated a return after delivery.",
+      "Returned":"Goods received back; refund or credit issued."
+    },
+    transitions: [
+      {from:"Draft",to:"Submitted",classification:"progression",cause:"Customer places order"},
+      {from:"Submitted",to:"Confirmed",classification:"progression",cause:"Merchant accepts; payment authorized"},
+      {from:"Confirmed",to:"Processing",classification:"progression",cause:"Fulfillment system picks up order"},
+      {from:"Processing",to:"Shipped",classification:"progression",cause:"Dispatch with tracking number"},
+      {from:"Shipped",to:"Delivered",classification:"progression",cause:"Carrier confirms delivery"},
+      {from:"Delivered",to:"Completed",classification:"progression",cause:"Post-delivery window closes"},
+      {from:"Submitted",to:"Cancelled",classification:"lateral",cause:"Payment fails or merchant rejects"},
+      {from:"Confirmed",to:"Cancelled",classification:"lateral",cause:"Customer or merchant cancels before fulfillment"},
+      {from:"Processing",to:"Cancelled",classification:"lateral",cause:"Fulfillment failure (e.g. out of stock)"},
+      {from:"Shipped",to:"Cancelled",classification:"lateral",cause:"Carrier returns undeliverable package"},
+      {from:"Delivered",to:"Return Requested",classification:"lateral",cause:"Customer initiates return"},
+      {from:"Return Requested",to:"Returned",classification:"lateral",cause:"Merchant approves; goods received back"},
+      {from:"Return Requested",to:"Completed",classification:"lateral",cause:"Return claim rejected"},
+      {from:"Processing",to:"Confirmed",classification:"regression",cause:"Fulfillment started in error; order pulled back for re-confirmation.",handling:"Any inventory reservation or payment capture triggered at Confirmed → Processing may need to be reversed or re-evaluated."},
+      {from:"Confirmed",to:"Submitted",classification:"regression",cause:"Payment authorization expired; order needs re-authorization.",handling:"Payment authorization state is now uncertain; downstream invoice or billing records should not be finalized until Confirmed is re-observed."},
+      {from:"Shipped",to:"Processing",classification:"regression",cause:"Carrier returned package before delivery; order re-enters fulfillment.",handling:"A shipping label or dispatch notification may have already been sent to the customer. The regression indicates the upstream system has invalidated that dispatch."},
+      {from:"Delivered",to:"Shipped",classification:"regression",cause:"Delivery scan was erroneous; carrier corrects status.",handling:"A delivery confirmation sent to the customer may be premature. This is rare and usually a data correction in the carrier integration."}
+    ]
+  },
+  "user-account": {
+    label: "User Account",
+    description: "Identity and access from registration to deactivation.",
+    canonical: ["Pending Verification","Active","Suspended","Deactivated"],
+    branch: ["Locked","Pending Deletion"],
+    terminal: ["Deactivated"],
+    descriptions: {
+      "Pending Verification":"Account created; email/identity not yet confirmed.",
+      "Active":"Verified and in normal use.",
+      "Locked":"Temporarily inaccessible due to security policy (e.g., too many failed logins).",
+      "Suspended":"Administratively restricted; the user cannot log in.",
+      "Pending Deletion":"User requested account deletion; grace period is running.",
+      "Deactivated":"Permanently closed."
+    },
+    transitions: [
+      {from:"Pending Verification",to:"Active",classification:"progression",cause:"User completes email/identity verification"},
+      {from:"Active",to:"Suspended",classification:"progression",cause:"Admin applies restriction"},
+      {from:"Suspended",to:"Deactivated",classification:"progression",cause:"Admin permanently closes account"},
+      {from:"Pending Verification",to:"Deactivated",classification:"lateral",cause:"Verification TTL expired with no action"},
+      {from:"Active",to:"Locked",classification:"lateral",cause:"Failed login threshold exceeded"},
+      {from:"Active",to:"Pending Deletion",classification:"lateral",cause:"User initiates deletion request"},
+      {from:"Locked",to:"Active",classification:"lateral",cause:"User completes unlock flow or admin resets"},
+      {from:"Locked",to:"Suspended",classification:"lateral",cause:"Admin escalates during lockout"},
+      {from:"Pending Deletion",to:"Active",classification:"lateral",cause:"User cancels within grace period"},
+      {from:"Pending Deletion",to:"Deactivated",classification:"lateral",cause:"Grace period elapses"},
+      {from:"Suspended",to:"Active",classification:"regression",cause:"Admin lifts suspension; account restored to normal use.",handling:"The most common regression. Access controls, tokens, and session state need to be re-evaluated as if the account is healthy again."},
+      {from:"Deactivated",to:"Suspended",classification:"regression",cause:"Upstream system reverses a permanent close (exceptional; usually a data correction).",handling:"Rare and significant. If any data anonymisation or deletion was triggered upon Deactivated, this regression signals a serious upstream correction. Flag immediately."},
+      {from:"Active",to:"Pending Verification",classification:"regression",cause:"Re-verification required (e.g., security policy change, email address changed).",handling:"The account is functionally restricted until reverified. Any sessions or tokens issued during Active should be treated as potentially stale."}
+    ]
+  },
+  "support-ticket": {
+    label: "Support Ticket",
+    description: "Issue resolution from open to closed.",
+    canonical: ["Open","In Progress","Resolved","Closed"],
+    branch: ["Pending Customer","Pending Third Party","Escalated","Reopened"],
+    terminal: ["Closed"],
+    descriptions: {
+      "Open":"Ticket received; not yet assigned or worked.",
+      "In Progress":"An agent is actively investigating or working the issue.",
+      "Pending Customer":"Waiting on information or confirmation from the customer.",
+      "Pending Third Party":"Blocked on an external party (vendor, partner, internal team).",
+      "Escalated":"Transferred to a higher-tier team.",
+      "Resolved":"Agent has marked the issue as fixed.",
+      "Closed":"Confirmed resolved or auto-closed after inactivity.",
+      "Reopened":"Customer reports the issue persists after resolution or close."
+    },
+    transitions: [
+      {from:"Open",to:"In Progress",classification:"progression",cause:"Agent assigns ticket"},
+      {from:"In Progress",to:"Resolved",classification:"progression",cause:"Agent marks issue fixed"},
+      {from:"Resolved",to:"Closed",classification:"progression",cause:"Customer confirms or auto-close TTL elapses"},
+      {from:"Open",to:"Closed",classification:"lateral",cause:"System detects spam or duplicate"},
+      {from:"In Progress",to:"Pending Customer",classification:"lateral",cause:"Agent requests more information"},
+      {from:"In Progress",to:"Pending Third Party",classification:"lateral",cause:"Blocked on external dependency"},
+      {from:"In Progress",to:"Escalated",classification:"lateral",cause:"Agent escalates or SLA timer triggers"},
+      {from:"Pending Customer",to:"In Progress",classification:"lateral",cause:"Customer replies"},
+      {from:"Pending Customer",to:"Closed",classification:"lateral",cause:"No customer response within TTL"},
+      {from:"Pending Third Party",to:"In Progress",classification:"lateral",cause:"External blocker resolved"},
+      {from:"Escalated",to:"In Progress",classification:"lateral",cause:"Escalation team accepts ticket"},
+      {from:"Escalated",to:"Resolved",classification:"lateral",cause:"Escalation team resolves directly"},
+      {from:"Resolved",to:"Reopened",classification:"lateral",cause:"Customer disputes resolution"},
+      {from:"Closed",to:"Reopened",classification:"lateral",cause:"Customer re-opens within allowed window"},
+      {from:"Reopened",to:"In Progress",classification:"lateral",cause:"Agent re-engages"},
+      {from:"Reopened",to:"Escalated",classification:"lateral",cause:"Second reopen triggers policy rule"},
+      {from:"In Progress",to:"Open",classification:"regression",cause:"Agent unassigns ticket; returns to unworked queue.",handling:"The ticket effectively re-queues. Any SLA clock adjustments made when the ticket was assigned may need recalculating."},
+      {from:"Resolved",to:"In Progress",classification:"regression",cause:"Resolution found to be incomplete or incorrect.",handling:"The most operationally significant regression. Any customer-facing 'your issue is resolved' communication triggered at Resolved is now incorrect. Flag for potential follow-up messaging."},
+      {from:"Closed",to:"Resolved",classification:"regression",cause:"Auto-close was premature; ticket re-opened for review.",handling:"If Closed triggered satisfaction survey dispatch or case archival, note those as premature. Do not re-trigger them when Closed is re-observed."},
+      {from:"Escalated",to:"Open",classification:"regression",cause:"Escalation reversed; ticket returned to general queue (regresses past In Progress).",handling:"The ticket has skipped backward past In Progress. Treat as a gap of two ordinal positions and consider whether intermediate handlers for In Progress need to run."}
+    ]
+  },
+  "document": {
+    label: "Document / Content",
+    description: "Editorial workflow from draft to archive.",
+    canonical: ["Draft","In Review","Approved","Published","Archived"],
+    branch: ["Changes Requested","Scheduled","Unpublished"],
+    terminal: ["Archived"],
+    descriptions: {
+      "Draft":"Being written; only visible to the author and collaborators.",
+      "In Review":"Submitted for editorial or peer review.",
+      "Changes Requested":"Reviewer has returned the document for revisions.",
+      "Approved":"Cleared by reviewer(s); ready for publishing.",
+      "Scheduled":"Approved and queued for automatic publication at a future datetime.",
+      "Published":"Publicly visible or accessible to the target audience.",
+      "Unpublished":"Temporarily pulled from public view; not yet archived.",
+      "Archived":"Retired; no longer actively maintained or publicly visible."
+    },
+    transitions: [
+      {from:"Draft",to:"In Review",classification:"progression",cause:"Author submits for review"},
+      {from:"In Review",to:"Approved",classification:"progression",cause:"Reviewer approves"},
+      {from:"Approved",to:"Published",classification:"progression",cause:"Author or system publishes immediately"},
+      {from:"Published",to:"Archived",classification:"progression",cause:"Admin retires content"},
+      {from:"Draft",to:"Archived",classification:"lateral",cause:"Author discards document"},
+      {from:"In Review",to:"Changes Requested",classification:"lateral",cause:"Reviewer requests revisions"},
+      {from:"Changes Requested",to:"In Review",classification:"lateral",cause:"Author resubmits after addressing feedback"},
+      {from:"Approved",to:"Scheduled",classification:"lateral",cause:"Author sets a future publish date"},
+      {from:"Scheduled",to:"Published",classification:"lateral",cause:"Scheduler fires at publish datetime"},
+      {from:"Published",to:"Unpublished",classification:"lateral",cause:"Author or admin pulls content from public view"},
+      {from:"Unpublished",to:"Published",classification:"lateral",cause:"Author or admin re-publishes"},
+      {from:"Unpublished",to:"Archived",classification:"lateral",cause:"Admin permanently retires content"},
+      {from:"In Review",to:"Draft",classification:"regression",cause:"Reviewer withdraws from review; document returned to author for rework.",handling:"Common in editorial workflows. The review cycle resets. Any notifications sent to reviewers about the submission should be noted as superseded."},
+      {from:"Approved",to:"In Review",classification:"regression",cause:"Approval revoked (e.g., new stakeholder objects, policy changed).",handling:"Approval was granted but then revoked. Any scheduled publication or 'approved' indicators surfaced to downstream systems should be retracted."},
+      {from:"Published",to:"Approved",classification:"regression",cause:"Document pulled back to approved state, bypassing explicit Unpublished step.",handling:"An unusual path - public to pre-publication without passing through Unpublished. May indicate a data correction in the upstream CMS. The practical effect is the same as Published → Unpublished: the document is no longer public."},
+      {from:"Scheduled",to:"Approved",classification:"regression",cause:"Scheduling cancelled; document remains approved.",handling:"The publish date was cancelled. No publication action has occurred. The document is still cleared for publishing and is waiting for a new publish action."},
+      {from:"Unpublished",to:"Draft",classification:"regression",cause:"Author decides to revise content rather than simply re-publish.",handling:"The author wants to make substantive changes, not just re-publish. This is a regression of two ordinal positions (skipping In Review). The document is now back in the edit-submit-review cycle."}
+    ]
+  }
+};
+
+/* ----- State ----- */
+let currentEntity = "order";
+let selectedStatus = null;
+let journey = [];          // [{from,to,classification,cause}]
+let journeyState = null;   // current status in tracer
+let requirements = [];     // [{entity,from,to,note}]
+
+/* ----- Helpers ----- */
+const $ = id => document.getElementById(id);
+function ent() { return DATA[currentEntity]; }
+function allStatuses(e) { return [...e.canonical, ...e.branch]; }
+function ordinal(e, s) { const i = e.canonical.indexOf(s); return i === -1 ? null : i + 1; }
+function findTransition(e, from, to) { return e.transitions.find(t => t.from === from && t.to === to); }
+function outbound(e, from) { return e.transitions.filter(t => t.from === from); }
+function isTerminal(e, s) { return e.terminal.includes(s); }
+function esc(str) { return String(str).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 1900);
+}
+function copy(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast("Copied to clipboard")).catch(() => fallbackCopy(text));
+  } else { fallbackCopy(text); }
+}
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
+  ta.select(); try { document.execCommand("copy"); toast("Copied to clipboard"); } catch(e) { toast("Copy failed — select manually"); }
+  document.body.removeChild(ta);
+}
+
+/* ----- Render: tabs ----- */
+function renderTabs() {
+  $("tabs").innerHTML = Object.keys(DATA).map(k =>
+    `<div class="tab ${k===currentEntity?'active':''}" data-k="${k}">${esc(DATA[k].label)}</div>`
+  ).join("");
+  document.querySelectorAll(".tab").forEach(t =>
+    t.onclick = () => { currentEntity = t.dataset.k; selectedStatus = null; resetTracer(); renderAll(); });
+}
+
+/* ----- Render: entity meta ----- */
+function renderMeta() {
+  const e = ent();
+  const canon = e.canonical.map((s,i) => `<span class="pill"><b>${i+1}</b> ${esc(s)}</span>`).join('<span class="arrow">›</span>');
+  const branch = e.branch.map(s => `<span class="pill">${esc(s)}</span>`).join(" ");
+  $("entityMeta").innerHTML =
+    `<div style="font-size:14px;">${esc(e.description)}</div>
+     <div class="canon"><b>Canonical order:</b> ${canon}</div>
+     <div class="canon"><b>Branch statuses:</b> ${branch}</div>
+     <div class="canon"><b>Terminal:</b> ${e.terminal.map(s=>esc(s)).join(", ")}</div>`;
+}
+
+/* ----- Render: status grid ----- */
+function renderGrid() {
+  const e = ent();
+  $("grid").innerHTML = allStatuses(e).map(s => {
+    const ord = ordinal(e, s);
+    let badge;
+    if (isTerminal(e, s)) badge = `<span class="ord term" title="Terminal state">end</span>`;
+    else if (ord === null) badge = `<span class="ord branch" title="Branch status">branch</span>`;
+    else badge = `<span class="ord" title="Canonical position ${ord}">${ord}</span>`;
+    return `<div class="card ${s===selectedStatus?'selected':''}" data-s="${esc(s)}">
+      ${badge}
+      <div class="name">${esc(s)}</div>
+      <div class="desc">${esc(e.descriptions[s]||"")}</div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll("#grid .card").forEach(c =>
+    c.onclick = () => { selectedStatus = c.dataset.s; renderGrid(); renderTransPanel(); });
+}
+
+/* ----- Render: transitions for selected status ----- */
+function renderTransPanel() {
+  const e = ent();
+  const p = $("transPanel");
+  if (!selectedStatus) { p.style.display = "none"; return; }
+  p.style.display = "block";
+  const outs = outbound(e, selectedStatus);
+  let body = `<h3>${esc(selectedStatus)}</h3><div class="sub">${esc(e.descriptions[selectedStatus]||"")}</div>`;
+  if (isTerminal(e, selectedStatus)) {
+    body += `<div class="term-flag">⚑ Terminal state. A snapshot showing a transition <em>out</em> of here indicates a data correction or override upstream and should be flagged for review.</div>`;
+  }
+  if (outs.length === 0) {
+    body += `<p class="empty-hint" style="margin-top:12px;">No documented outbound transitions.</p>`;
+  } else {
+    body += `<div style="margin-top:10px;">` + outs.map(t =>
+      `<div class="trans-row">
+        <span class="badge ${t.classification}">${t.classification}</span>
+        <div class="trans-body">
+          <span class="to">→ ${esc(t.to)}</span>
+          <div class="cause">${esc(t.cause)}</div>
+          ${t.handling ? `<div class="handling"><b>Handling:</b> ${esc(t.handling)}</div>` : ""}
+        </div>
+      </div>`).join("") + `</div>`;
+  }
+  p.innerHTML = body;
+}
+
+/* ----- Tracer ----- */
+function resetTracer() {
+  journey = []; journeyState = null;
+  const e = ent();
+  $("tracerNext").innerHTML = `<option value="">— start at —</option>` +
+    allStatuses(e).map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+  $("tracerCurrent").textContent = "Choose a starting status from the dropdown, then keep adding steps.";
+  $("journeyTable").style.display = "none";
+  $("journeyTable").querySelector("tbody").innerHTML = "";
+}
+function tracerStep() {
+  const e = ent();
+  const next = $("tracerNext").value;
+  if (!next) { toast("Pick a status first"); return; }
+  if (journeyState === null) {
+    journeyState = next;
+    updateTracerCurrent();
+    refreshTracerOptions();
+    return;
+  }
+  if (next === journeyState) { toast("Already there"); return; }
+  const t = findTransition(e, journeyState, next);
+  journey.push({
+    from: journeyState, to: next,
+    classification: t ? t.classification : "none",
+    cause: t ? t.cause : "Not a documented transition — verify with upstream / flag as a requirement."
+  });
+  journeyState = next;
+  renderJourneyTable();
+  updateTracerCurrent();
+  refreshTracerOptions();
+}
+function updateTracerCurrent() {
+  if (journeyState === null) { $("tracerCurrent").textContent = "Choose a starting status."; return; }
+  const e = ent();
+  $("tracerCurrent").innerHTML = `Currently at: <b>${esc(journeyState)}</b> ${isTerminal(e,journeyState)?'<span class="term-flag" style="margin:0 0 0 8px;">terminal</span>':''}`;
+}
+function refreshTracerOptions() {
+  // After a start is chosen, default the dropdown to documented next-steps for convenience but allow any.
+  const e = ent();
+  const outs = journeyState ? outbound(e, journeyState).map(t => t.to) : [];
+  const opts = allStatuses(e).map(s => {
+    const tag = outs.includes(s) ? " ✓" : "";
+    return `<option value="${esc(s)}">${esc(s)}${tag}</option>`;
+  }).join("");
+  $("tracerNext").innerHTML = opts;
+}
+function renderJourneyTable() {
+  const tbody = $("journeyTable").querySelector("tbody");
+  if (journey.length === 0) { $("journeyTable").style.display = "none"; return; }
+  $("journeyTable").style.display = "table";
+  const colors = {progression:["var(--prog-bg)","var(--prog)"],regression:["var(--regr-bg)","var(--regr)"],lateral:["var(--lat-bg)","var(--lat)"],none:["var(--danger-bg)","var(--danger)"]};
+  tbody.innerHTML = journey.map((j,i) => {
+    const c = colors[j.classification];
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${esc(j.from)}</td>
+      <td>${esc(j.to)}</td>
+      <td><span class="mini-badge" style="background:${c[0]};color:${c[1]}">${j.classification==='none'?'not in spec':j.classification}</span></td>
+      <td>${esc(j.cause)}</td>
+    </tr>`;
+  }).join("");
+}
+function exportJourney() {
+  if (journey.length === 0) { toast("No steps to copy"); return; }
+  const e = ent();
+  let out = `Journey — ${e.label}\n`;
+  out += journey.map((j,i) => `${i+1}. ${j.from} → ${j.to}  [${j.classification==='none'?'NOT IN SPEC':j.classification.toUpperCase()}]  ${j.cause}`).join("\n");
+  copy(out);
+}
+
+/* ----- Classifier ----- */
+function fillClassifierSelects() {
+  const e = ent();
+  const opts = allStatuses(e).map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+  $("clsFrom").innerHTML = opts;
+  $("clsTo").innerHTML = opts;
+  if (allStatuses(e).length > 1) $("clsTo").selectedIndex = 1;
+  $("clsResult").classList.remove("show");
+}
+function classify() {
+  const e = ent();
+  const from = $("clsFrom").value, to = $("clsTo").value;
+  const box = $("clsResult");
+  box.classList.add("show");
+  if (from === to) {
+    box.innerHTML = `<b>No change.</b> From and To are the same status — the snapshot system would not infer a transition.`;
+    return;
+  }
+  const t = findTransition(e, from, to);
+  if (t) {
+    box.innerHTML =
+      `<div class="trans-row" style="padding-top:0;">
+        <span class="badge ${t.classification}">${t.classification}</span>
+        <div class="trans-body">
+          <div class="to">${esc(from)} → ${esc(to)}</div>
+          <div class="cause">${esc(t.cause)}</div>
+          ${t.handling ? `<div class="handling"><b>Handling:</b> ${esc(t.handling)}</div>` : ""}
+        </div>
+      </div>`;
+  } else {
+    box.innerHTML =
+      `<div class="trans-row" style="padding-top:0;">
+        <span class="badge none">not in spec</span>
+        <div class="trans-body">
+          <div class="to">${esc(from)} → ${esc(to)}</div>
+          <div class="cause">This pair is <b>not documented</b> for ${esc(e.label)}. If your business needs it, flag it below.</div>
+          <div class="row-inline" style="margin-top:10px;">
+            <div><input type="text" id="reqNote" placeholder="Why is this needed? (optional note)" style="width:100%;"></div>
+            <button class="small" id="reqAdd">Flag as needed transition</button>
+          </div>
+        </div>
+      </div>`;
+    $("reqAdd").onclick = () => {
+      requirements.push({ entity: e.label, from, to, note: $("reqNote").value.trim() });
+      renderRequirements();
+      toast("Flagged — see Proposed / Needed Transitions");
+      box.classList.remove("show");
+    };
+  }
+}
+
+/* ----- Requirements ----- */
+function renderRequirements() {
+  const el = $("reqList");
+  if (requirements.length === 0) {
+    el.innerHTML = `<p class="empty-hint">Nothing flagged yet. Use the classifier above to flag a transition your process needs.</p>`;
+    return;
+  }
+  el.innerHTML = requirements.map((r,i) =>
+    `<div class="req-item">
+      <span class="x" data-i="${i}" title="Remove">✕</span>
+      <div class="req-head">[${esc(r.entity)}] ${esc(r.from)} → ${esc(r.to)}</div>
+      ${r.note ? `<div class="req-note">${esc(r.note)}</div>` : `<div class="req-note" style="font-style:italic;">No note</div>`}
+    </div>`).join("");
+  el.querySelectorAll(".x").forEach(x =>
+    x.onclick = () => { requirements.splice(+x.dataset.i, 1); renderRequirements(); });
+}
+function exportRequirements() {
+  if (requirements.length === 0) { toast("Nothing flagged yet"); return; }
+  copy(JSON.stringify({ proposed_transitions: requirements }, null, 2));
+}
+
+/* ----- Wire up ----- */
+function renderAll() { renderTabs(); renderMeta(); renderGrid(); renderTransPanel(); resetTracer(); fillClassifierSelects(); }
+$("tracerGo").onclick = tracerStep;
+$("tracerReset").onclick = resetTracer;
+$("tracerExport").onclick = exportJourney;
+$("clsGo").onclick = classify;
+$("reqExport").onclick = exportRequirements;
+$("reqClear").onclick = () => { requirements = []; renderRequirements(); };
+renderAll();
+renderRequirements();
+</script>
+</body>
+</html>
